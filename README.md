@@ -1,4 +1,7 @@
-# Update 2026/5/11
+# Update 2026/5/12
+- Mouth Landmark Tracking 구현
+- 입 ↔ 측정기 거리 계산 기능 추가
+- 고정형 음주 측정기 위치 감지 로직 구현
 
 # MobileFaceNet Driver Authentication System
 
@@ -8,8 +11,12 @@
 ## 📌 프로젝트 상세
 
 운전자 얼굴 인증 후,
-고정형 음주 측정기를 이용하여
-실제 운전자가 측정을 진행했는지 확인하는 시스템입니다.
+고정형 음주 측정기와 입 위치를 비교하여
+실제 운전자가 측정을 수행했는지 확인하는 시스템입니다.
+
+MediaPipe FaceMesh를 이용하여 입 랜드마크를 추적하고,
+고정된 측정기 위치와의 거리 계산을 통해
+최종 인증 여부를 판별합니다.
 
 ### 주요 목표
 - 얼굴 인증 기반 운전자 식별
@@ -33,13 +40,21 @@
 
 ![demo](assets/fail.gif)
 
+### 고정형 음주 측정기 위치 감지
+
+> 파란 점 : 고정된 측정기 위치  
+> 노란 점 : 입 위치  
+> Distance : 입 ↔ 측정기 거리
+![demo](assets/mouse_tracker.gif)
+
+
 # 🧠 시스템 구조
 
 ```bash
 Camera
  ↓
 MediaPipe FaceMesh
-(Face Alignment)
+(Face Alignment + Mouth Landmark)
 
  ↓
 MobileFaceNet
@@ -49,7 +64,10 @@ MobileFaceNet
 Cosine Similarity
 
  ↓
-PASS / FAIL
+Mouth ↔ Tester Distance Calculation
+
+ ↓
+FINAL PASS / FAIL
 ```
 
 # 🔧 기술 스택
@@ -90,21 +108,25 @@ mobile-facenet/
 - 얼굴 임베딩 생성
 - 코사인 유사도 비교
 - PASS / FAIL 인증 처리
+- 입 위치 기반 고정 측정기 거리 계산
+- FINAL PASS / FAIL 로직
+- Mouth Landmark Tracking
 - 라즈베리파이 이식 후 실행 완료
 
 ## 🚧 앞으로의 계획
-- 고정형 음주 측정기 위치 감지
 - MQ-3 음주 센서 연동
+- 실제 음주 측정 데이터 처리
 - STM32 시동 제어
 - 다중 얼굴 차단 기능
 - 운전자 잠금 상태 시스템
 
 # 🧩 인증 과정
-1. 운전자 얼굴 인증 PASS
-2. 입 위치를 고정된 측정기에 가까이 이동
-3. 몇 초 동안 위치 유지
-4. MQ-3 센서 값 감지
-5. 최종 PASS
+1. MobileFaceNet 기반 운전자 얼굴 인증
+2. FaceMesh 기반 입 위치 추적
+3. 입 ↔ 측정기 거리 계산
+4. 일정 시간 위치 유지
+5. MQ-3 센서 값 감지
+6. 최종 PASS
 
 # 🚀 Installation
 
@@ -147,6 +169,9 @@ python main.py
 - 안정적인 얼굴 정렬을 위해 MediaPipe FaceMesh를 사용했습니다.
 - 라즈베리파이 환경에서의 경량 추론을 위해 MobileFaceNet을 선택했습니다.
 - 얼굴 정렬 적용 후 얼굴 인증 성능이 크게 향상되었습니다.
+- FaceMesh landmark를 이용하여 입 위치를 추적했습니다.
+- 입 위치와 측정기 위치 간 pixel distance 계산을 통해 측정 동작을 판별했습니다.
+
 
 ## 👥 팀 역할
 

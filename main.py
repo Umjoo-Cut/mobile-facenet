@@ -4,6 +4,13 @@ import pickle
 import numpy as np
 import onnxruntime as ort
 import mediapipe as mp
+import time
+import math
+
+
+TESTER_POSITION = (320, 300)   # 고정형 측정기 위치, 화면에서 조정 필요
+DISTANCE_THRESHOLD = 80        # 입과 측정기 거리 기준
+HOLD_SECONDS = 2.0             # 몇 초 유지해야 PASS인지
 
 
 class FaceDetector:
@@ -90,6 +97,35 @@ class FaceDetector:
             landmark.x * width,
             landmark.y * height
         ]
+    
+
+    def get_mouth_center(self, frame):
+        h, w, _ = frame.shape
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        results = self.face_mesh.process(rgb)
+
+        if not results.multi_face_landmarks:
+            return None
+
+        landmarks = results.multi_face_landmarks[0].landmark
+
+        # 입 주변 주요 포인트
+        mouth_indices = [13, 14, 61, 291, 78, 308]
+
+        xs = []
+        ys = []
+
+        for idx in mouth_indices:
+            xs.append(landmarks[idx].x * w)
+            ys.append(landmarks[idx].y * h)
+
+        mouth_x = int(sum(xs) / len(xs))
+        mouth_y = int(sum(ys) / len(ys))
+
+        return (mouth_x, mouth_y)
+
+        
     def draw_face_mesh(self, frame):
         h, w, _ = frame.shape
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -184,6 +220,10 @@ class FaceDatabase:
         return augmented_images
 
     def create_owner_embedding(self):
+
+        if not os.path.exists(self.register_dir):
+            raise FileNotFoundError(f"등록 이미지 폴더가 없습니다: {self.register_dir}")
+        
         embeddings = []
 
         for filename in os.listdir(self.register_dir):
@@ -241,8 +281,19 @@ class FaceDatabase:
         print(f"총 임베딩 개수: {len(embeddings)}")
 
     def load_owner_embedding(self):
-        if not os.path.exists(self.embedding_path):
-            self.create_owner_embedding()
+        if os.path.exists(self.embedding_path):
+            with open(self.embedding_path, "rb") as f:
+                print("저장된 얼굴 임베딩 로드 완료")
+                return pickle.load(f)
+
+        if not os.path.exists(self.register_dir):
+            raise FileNotFoundError(
+                f"등록 이미지 폴더가 없습니다: {self.register_dir}\n"
+                f"처음 실행이라면 register/owner 폴더에 얼굴 이미지를 넣어주세요.\n"
+                f"이미 등록을 완료했다면 embeddings/owner_embedding.pkl 파일이 필요합니다."
+            )
+
+        self.create_owner_embedding()
 
         with open(self.embedding_path, "rb") as f:
             return pickle.load(f)
@@ -294,6 +345,8 @@ class FaceAuthApp:
 
         print("ESC 키를 누르면 종료됩니다.")
 
+        near_start_time = None
+
         while True:
             ret, frame = cap.read()
 
@@ -339,6 +392,100 @@ class FaceAuthApp:
                 color,
                 3
             )
+
+            mouth_center = self.detector.get_mouth_center(frame)
+
+            tester_x, tester_y = TESTER_POSITION
+
+            cv2.circle(frame, (tester_x, tester_y), 8, (255, 0, 0), -1)
+
+            cv2.putText(
+                frame,
+                "Tester",
+                (tester_x - 30, tester_y - 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 0, 0),
+                2
+            )
+
+            mouth_near_tester = False
+            hold_time = 0.0
+
+            if mouth_center is not None:
+
+                mouth_x, mouth_y = mouth_center
+
+                cv2.circle(frame, (mouth_x, mouth_y), 8, (0, 255, 255), -1)
+
+                cv2.putText(
+                    frame,
+                    "Mouth",
+                    (mouth_x - 30, mouth_y - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 255),
+                    2
+                )
+
+                distance = math.sqrt(
+                    (mouth_x - tester_x) ** 2 +
+                    (mouth_y - tester_y) ** 2
+                )
+
+                if distance < DISTANCE_THRESHOLD:
+
+                    mouth_near_tester = True
+
+                    if near_start_time is None:
+                        near_start_time = time.time()
+
+                    hold_time = time.time() - near_start_time
+
+                else:
+                    near_start_time = None
+
+                cv2.line(
+                    frame,
+                    (mouth_x, mouth_y),
+                    (tester_x, tester_y),
+                    (255, 255, 0),
+                    2
+                )
+
+                cv2.putText(
+                    frame,
+                    f"Distance: {int(distance)}",
+                    (30, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (255, 255, 0),
+                    2
+                )
+
+            else:
+                near_start_time = None
+
+            if status == "PASS" and mouth_near_tester and hold_time >= HOLD_SECONDS:
+
+                final_status = "FINAL PASS"
+                final_color = (0, 255, 0)
+
+            else:
+
+                final_status = "FINAL FAIL"
+                final_color = (0, 0, 255)
+
+            cv2.putText(
+                frame,
+                f"{final_status} hold:{hold_time:.1f}s",
+                (30, 150),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                final_color,
+                3
+            )
+
 
             frame = self.detector.draw_face_mesh(frame)
             cv2.imshow("MobileFaceNet Face Auth", frame)
