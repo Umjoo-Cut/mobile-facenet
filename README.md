@@ -45,7 +45,7 @@ MediaPipe FaceMesh를 이용하여 입 랜드마크를 추적하고,
 > 파란 점 : 고정된 측정기 위치  
 > 노란 점 : 입 위치  
 > Distance : 입 ↔ 측정기 거리
-![demo](assets/mouse_tracker.gif)
+![demo](assets/mouth_tracker.gif)
 
 
 # 🧠 시스템 구조
